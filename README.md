@@ -4,6 +4,13 @@ Made by Valerie Wang (vjw33) &
 
 Some requirements
 - everything must be in chunks of 8 bytes
-- headers will only have size and is it allocated, no pointers to before/after
+- headers will have 1) size 2) isAllocated 3)prev_size and always be 8 bytes
 - myfree() will coalesce adjacent chunks by checking the prev and next chunk every time it runs
-- 
+
+Testing Plan
+1. malloc 5 chunks, free first chunk
+    this is testing previous coalescing edge case
+2. malloc 5 chunks, free 3 middle chunks
+    this is testing forwards and backward coalescing
+3. malloc 1 chunk
+4. Test all the error reporting XD

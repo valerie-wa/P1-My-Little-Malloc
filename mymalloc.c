@@ -4,7 +4,7 @@
  * need line # and name of src file for printing msgs (standard error)
  * memory needs 1. size 2. is it allocated
  * 
- * 
+ * snprintf
  */
 
 #include "mymalloc.h"
@@ -18,7 +18,6 @@ static int heap_initialized = 0;
 
 typedef struct {
     size_t size;
-    unsigned short prev_size;
     int isAllocated;
 } header;
 
@@ -32,7 +31,6 @@ void init(){
     first_header->isAllocated = 0;
     heap_initialized = 1;
     first_header->size = ((MEMLENGTH - sizeof(header)) + 7) & ~7;
-    first_header->prev_size = NULL;
 
     //register leak detection function to be called at exit
     atexit(leak_detection);
@@ -88,16 +86,9 @@ void * mymalloc (size_t size, char *file, int line){\
                 header *next_header = (header *)((char *)current + HEADER_SIZE + size);
                 next_header->size = current->size - HEADER_SIZE - size;
                 next_header->isAllocated = 0;
-                next_header-> prev_size = size;
             }
             current->isAllocated = 1;
             current->size = size;
-
-            //set prev size for next chunk (if exists)
-            header *next_chunk = (header *)((char *)current + HEADER_SIZE + current->size);
-            if ((char *)next_chunk < heap.bytes + MEMLENGTH) {//j checking if still in heap
-                next_chunk->prev_size = current->size;
-            }
             return (char *)current + HEADER_SIZE; //pointer to payload
         }
         current = (header *)((char *)current + HEADER_SIZE + current->size);
