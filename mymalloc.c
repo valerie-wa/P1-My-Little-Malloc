@@ -8,6 +8,7 @@
  */
 
 #include "mymalloc.h"
+#include <stdio.h>
 
 #define MEMLENGTH 4096
 static union {
@@ -16,32 +17,15 @@ static union {
 } heap;
 static int heap_initialized = 0;
 
+//rn the header is 16 bytes
 typedef struct {
     size_t size;
-    unsigned short prev_size;
     int isAllocated;
 } header;
-
-/*
-* initializes heap
-* register leak detection func at exit
- */
-void init(){
-    //initialize the heap as a big free chunk
-    header *first_header = (header *) (&heap.bytes[0]);
-    first_header->isAllocated = 0;
-    heap_initialized = 1;
-    first_header->size = ((MEMLENGTH - sizeof(header)) + 7) & ~7;
-    first_header->prev_size = NULL;
-
-    //register leak detection function to be called at exit
-    atexit(leak_detection);
-}
 
 void leak_detection(){
     //cannot call exit() itself
     //if anything still allocated print error msg
-    int STD_ERR = 2;
     int obj_count = 0;
     int HEADER_SIZE = 8;
     int byte_count = 0;
@@ -53,8 +37,23 @@ void leak_detection(){
         }
         current = (header *)((char *)current + HEADER_SIZE + current->size);
     }
-    write(STD_ERR, "mymalloc: %zu bytes leaked in %d objects.\n", byte_count, obj_count);
-    return;
+    //not sure is write can be used like that? maybe use fprintf
+    fprintf(stderr, "mymalloc: %d bytes leaked in %d objects.\n", byte_count, obj_count);
+    return; 
+}
+
+/*
+* initializes heap
+* register leak detection func at exit
+ */
+void init(){
+    //initialize the heap as a big free chunk
+    header *first_header = (header *) (&heap.bytes[0]);
+    first_header->isAllocated = 0;
+    heap_initialized = 1;
+    first_header->size = ((MEMLENGTH - sizeof(header)) + 7) & ~7;
+    //register leak detection function to be called at exit
+    atexit(leak_detection()); //doesnt this need to be called after running leak_detection
 }
 
 /*
@@ -76,7 +75,7 @@ void * mymalloc (size_t size, char *file, int line){\
 
     //if cannot satisfy request
     if(size == 0 || size > MEMLENGTH - HEADER_SIZE){
-        write(STD_ERR, "malloc:Unable to allocate %zu bytes (%s:%d)\n", size, file, line);
+        fprintf(stderr, "malloc:Unable to allocate %zu bytes (%s:%d)\n", size, file, line);
         return NULL;
     }
 
@@ -88,7 +87,6 @@ void * mymalloc (size_t size, char *file, int line){\
                 header *next_header = (header *)((char *)current + HEADER_SIZE + size);
                 next_header->size = current->size - HEADER_SIZE - size;
                 next_header->isAllocated = 0;
-                next_header-> prev_size = size;
             }
             current->isAllocated = 1;
             current->size = size;
@@ -96,7 +94,6 @@ void * mymalloc (size_t size, char *file, int line){\
             //set prev size for next chunk (if exists)
             header *next_chunk = (header *)((char *)current + HEADER_SIZE + current->size);
             if ((char *)next_chunk < heap.bytes + MEMLENGTH) {//j checking if still in heap
-                next_chunk->prev_size = current->size;
             }
             return (char *)current + HEADER_SIZE; //pointer to payload
         }
@@ -104,7 +101,7 @@ void * mymalloc (size_t size, char *file, int line){\
     }
 
     //no chunk found after going through all checks
-    write(STD_ERR, "malloc:Unable to allocate %zu bytes (%s:%d)\n", size, file, line);
+    fprintf(stderr,"malloc:Unable to allocate %d bytes (%s:%d)\n", size, file, line);
     return NULL;
 }
 
@@ -126,39 +123,55 @@ void myfree (void *ptr, char *file, int line){
     //3. middle of payload/head/not pointing to payload 4. not allocated 
     //ptr null
     if(ptr == NULL){
-        write(STD_ERR, "free: Null pointer (%s:%d)", file, line);
+        fprintf(STD_ERR, "free: Null pointer (%s:%d)", file, line);//fprintf
         exit(2);
     } 
     //ptr before/after heap?
+    /*
+    Change from (void *) heap.bytes to (char *)ptr < heap.bytes since it would be easier
+    to iterate byte by byte
+    */
     if(ptr < (void *) heap.bytes || ptr >= (void *) (heap.bytes + MEMLENGTH)){ // ||middle of payload
-        write(STD_ERR, "free: Inappropriate pointer (%s:%d)", file, line);
+        fprintf(stderr, "free: Inappropriate pointer (%s:%d)", file, line);
         exit(2);
     }
-    header *head = (header *) ((char*)ptr - HEADER_SIZE);
-    if(head -> isAllocated == 0){ //already free
-        write(STD_ERR, "free: Double free (%s:%d)", file, line);
+   
+    header *current = (header *)heap.bytes;
+    header* previous = current;
+    previous->size = 0;
+
+    //iterate through each chunk until we find a ptr value that has a payload to free
+    while((char *)current < heap.bytes + MEMLENGTH){
+        void *payload = (char *)current + HEADER_SIZE;
+        if (payload == ptr){
+            break; //payload found
+        }
+        previous = current;
+        current = (header *)((char *) current + HEADER_SIZE + current->size);
+    }
+    if(current -> isAllocated == 0){ //already free
+        fprintf(stderr, "free: Double free (%s:%d)", file, line);
         exit(2);
     }
 
     //coalesce free chunks
-    header* next_head = (header *) ((char*)head + head->size + HEADER_SIZE);
+    header* next_head = (header *) ((char*)current + current->size + HEADER_SIZE);
     if((char *)next_head < heap.bytes + MEMLENGTH && next_head->isAllocated == 0){
-        head->size += (next_head -> size + HEADER_SIZE);
+        current->size += (next_head -> size + HEADER_SIZE);
         next_head ->isAllocated = 0;
         next_head = NULL;
         //i do feel like this leaves dangling pointers
         //does prev_size need to updated??
     }
     next_head = NULL;
-    header* prev_head = (header *) ((char*)head - head->prev_size - HEADER_SIZE);
-    if(prev_head >= (header*)heap.bytes && prev_head->isAllocated == 0){
-        prev_head->size += head->size + HEADER_SIZE;
-        head->isAllocated = 0;
-        head = NULL;
+    if((char*)current != heap.bytes){
+        previous->size += current->size + HEADER_SIZE;
+        current->isAllocated = 0;
+        current = NULL;
     }
 
     // freeing. do we need to change/0 anything in it like no??
-    head->isAllocated = 0;
-    head = NULL;
+    current->isAllocated = 0;
+    current = NULL;
     return;
 }
