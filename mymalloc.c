@@ -88,7 +88,7 @@ void * mymalloc (size_t size, char *file, int line){\
                 header *next_header = (header *)((char *)current + HEADER_SIZE + size);
                 next_header->size = current->size - HEADER_SIZE - size;
                 next_header->isAllocated = 0;
-                next_header-> prev_size = current->size;
+                next_header-> prev_size = size;
             }
             current->isAllocated = 1;
             current->size = size;
@@ -142,15 +142,18 @@ void myfree (void *ptr, char *file, int line){
 
     //coalesce free chunks
     header* next_head = (header *) ((char*)head + head->size + HEADER_SIZE);
-    if(next_head != NULL && next_head->isAllocated == 0){
+    if((char *)next_head < heap.bytes + MEMLENGTH && next_head->isAllocated == 0){
         head->size += (next_head -> size + HEADER_SIZE);
+        next_head ->isAllocated = 0;
         next_head = NULL;
         //i do feel like this leaves dangling pointers
+        //does prev_size need to updated??
     }
     next_head = NULL;
     header* prev_head = (header *) ((char*)head - head->prev_size - HEADER_SIZE);
-    if(prev_head!=NULL && prev_head->isAllocated == 0){
+    if(prev_head >= (header*)heap.bytes && prev_head->isAllocated == 0){
         prev_head->size += head->size + HEADER_SIZE;
+        head->isAllocated = 0;
         head = NULL;
     }
 
