@@ -107,7 +107,6 @@ void * mymalloc (size_t size, char *file, int line){\
 * 
 */
 void myfree (void *ptr, char *file, int line){
-    int STD_ERR = 2;
     int HEADER_SIZE = 8;
     //frees the memory pointed to by payload
     if(!heap_initialized){
@@ -116,9 +115,9 @@ void myfree (void *ptr, char *file, int line){
 
     //if inappropriate calls to free()
     //3. middle of payload/head/not pointing to payload 4. not allocated 
-    //ptr null
+    //ptr null, does nothing 
     if(ptr == NULL){
-        fprintf(STD_ERR, "free: Null pointer (%s:%d)", file, line);//fprintf
+        fprintf(stderr, "free: Null pointer (%s:%d)", file, line);//fprintf
         exit(2);
     } 
     //ptr before/after heap?
@@ -126,16 +125,15 @@ void myfree (void *ptr, char *file, int line){
     Change from (void *) heap.bytes to (char *)ptr < heap.bytes since it would be easier
     to iterate byte by byte
     */
-    if(ptr < (void *) heap.bytes || ptr >= (void *) (heap.bytes + MEMLENGTH)){ // ||middle of payload
+    if((char*) ptr < heap.bytes || (char *)ptr >= heap.bytes + MEMLENGTH){ // ||middle of payload
         fprintf(stderr, "free: Inappropriate pointer (%s:%d)", file, line);
         exit(2);
     }
    
     header *current = (header *)heap.bytes;
-    header* previous = current;
-    previous->size = 0;
+    header* previous = NULL; //let's keep this null as it avoid corrupting the heap since the size of prev would be 0 if set to current
 
-    //iterate through each chunk until we find a ptr value that has a payload to free
+    //iterate through each chunk until we find the chunk that contains ptr
     while((char *)current < heap.bytes + MEMLENGTH){
         void *payload = (char *)current + HEADER_SIZE;
         if (payload == ptr){
@@ -143,12 +141,36 @@ void myfree (void *ptr, char *file, int line){
         }
         previous = current;
         current = (header *)((char *) current + HEADER_SIZE + current->size);
+
+        //if we reach the end of heap, ptr was inside the heap but had no payload
+        if((char *)current >=heap.bytes + MEMLENGTH){
+            fprintf(stderr, "free: Inappropriate pointer (%s:%d)", file, line);
+            exit(2);
+        }
     }
+    //chunk was already freed
     if(current -> isAllocated == 0){ //already free
         fprintf(stderr, "free: Double free (%s:%d)", file, line);
         exit(2);
     }
 
+    //freeing the chunk
+    current->isAllocated = 0;
+
+    //merge with next chunk if possible
+    header *next = (header *)((char *)current + HEADER_SIZE + current->size); 
+
+    if((char *)next <heap.bytes + MEMLENGTH && next->isAllocated==0){
+        current->size += HEADER_SIZE + next->size;
+    }
+
+    //merge with prev chunk is possible
+
+    if(previous != NULL && previous->isAllocated==0){
+        previous->size += HEADER_SIZE+current->size;
+    }
+
+    /*
     //coalesce free chunks
     header* next_head = (header *) ((char*)current + current->size + HEADER_SIZE);
     if((char *)next_head < heap.bytes + MEMLENGTH && next_head->isAllocated == 0){
@@ -169,4 +191,5 @@ void myfree (void *ptr, char *file, int line){
     current->isAllocated = 0;
     current = NULL;
     return;
+    */
 }
