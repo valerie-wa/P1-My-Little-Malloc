@@ -1,0 +1,13 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "C/C++ Runner: Debug Session",
+      "type": "lldb",
+      "request": "launch",
+      "args": [],
+      "cwd": "/Users/davidgoncalves/Desktop/P1-My-Little-Malloc-main/P1-My-Little-Malloc",
+      "program": "/Users/davidgoncalves/Desktop/P1-My-Little-Malloc-main/P1-My-Little-Malloc/build/Debug/outDebug"
+    }
+  ]
+}
