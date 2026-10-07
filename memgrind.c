@@ -7,6 +7,6 @@ requirements have been violated, and (3) write programs to check those condition
 */
 
 /*
-* Testing plan
-* 1. malloc
+* 4. allocate 2 consecutively, free prev (8 byte pointers)
+* 5. allocate alternating 8, 16 bytes, middle -> end, beginning -> middle
 */

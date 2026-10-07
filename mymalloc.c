@@ -29,7 +29,7 @@ void leak_detection(){
     int obj_count = 0;
     int HEADER_SIZE = 8;
     int byte_count = 0;
-    header *current = (header *)heap.bytes;
+    header *current = (header *) heap.bytes;
     while((char*) current < heap.bytes + MEMLENGTH ){
         if(current->isAllocated == 1){
             obj_count ++;
@@ -53,7 +53,7 @@ void init(){
     heap_initialized = 1;
     first_header->size = ((MEMLENGTH - sizeof(header)) + 7) & ~7;
     //register leak detection function to be called at exit
-    atexit(leak_detection()); //doesnt this need to be called after running leak_detection
+    atexit(leak_detection); //doesnt this need to be called after running leak_detection
 }
 
 /*
@@ -62,10 +62,9 @@ void init(){
 * @size: number of bytes to allocate
 * returns a pointer to the payload of memory (not the header)
 */
-void * mymalloc (size_t size, char *file, int line){\
+void * mymalloc (size_t size, char *file, int line){
     int MIN_MEM_SIZE = 16; 
     int HEADER_SIZE = 8;
-    int STD_ERR = 2;
 
     if(!heap_initialized){
         init();
@@ -74,13 +73,13 @@ void * mymalloc (size_t size, char *file, int line){\
     size = (size + 7) & ~7; // round up to nearest multiple of 8
 
     //if cannot satisfy request
-    if(size == 0 || size > MEMLENGTH - HEADER_SIZE){
-        fprintf(stderr, "malloc:Unable to allocate %zu bytes (%s:%d)\n", size, file, line);
+    if(size == 0 || size > MEMLENGTH - HEADER_SIZE){//
+        fprintf(stderr, "Out of bounds of heap.");
         return NULL;
     }
 
     header *current = (header *) heap.bytes;
-    while((char *)current < heap.bytes + MEMLENGTH){ 
+    while((char *)current < MEMLENGTH){ 
         if(current->isAllocated == 0 && current->size >= size){
             if(current->size - HEADER_SIZE - size >= MIN_MEM_SIZE){
                 //split chunk
@@ -96,7 +95,7 @@ void * mymalloc (size_t size, char *file, int line){\
     }
 
     //no chunk found after going through all checks
-    fprintf(stderr,"malloc:Unable to allocate %d bytes (%s:%d)\n", size, file, line);
+    fprintf(stderr,"malloc:Unable to allocate %zu bytes (%s:%d)\n", size, file, line);
     return NULL;
 }
 
@@ -107,7 +106,6 @@ void * mymalloc (size_t size, char *file, int line){\
 * 
 */
 void myfree (void *ptr, char *file, int line){
-    int STD_ERR = 2;
     int HEADER_SIZE = 8;
     //frees the memory pointed to by payload
     if(!heap_initialized){
@@ -118,7 +116,7 @@ void myfree (void *ptr, char *file, int line){
     //3. middle of payload/head/not pointing to payload 4. not allocated 
     //ptr null
     if(ptr == NULL){
-        fprintf(STD_ERR, "free: Null pointer (%s:%d)", file, line);//fprintf
+        fprintf(stderr, "free: Null pointer (%s:%d)", file, line);//fprintf
         exit(2);
     } 
     //ptr before/after heap?

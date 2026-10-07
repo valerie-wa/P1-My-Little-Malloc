@@ -13,4 +13,10 @@ Testing Plan
 2. malloc 5 chunks, free 3 middle chunks
     this is testing forwards and backward coalescing
 3. malloc 1 chunk
-4. Test all the error reporting XD
+4. free pointer to middle of payload
+5. free a chunk that's already free
+6. allocate 0 bytes, 4088 bytes
+7. test splitting a chunk when mallo
+8. malloc everything, then malloc smth again
+9. free null pointer
+10. free pointer pointing to middle of empty memory
