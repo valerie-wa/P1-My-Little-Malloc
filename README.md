@@ -1,6 +1,6 @@
 Project 1 for CS 214 Systems Programming
 
-Made by Valerie Wang (vjw33) & 
+Made by Valerie Wang (vjw33) & David Goncalves (drg144)
 
 Some requirements
 - everything must be in chunks of 8 bytes
