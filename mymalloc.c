@@ -29,17 +29,17 @@ void leak_detection(){
     //if anything still allocated print error msg
     int obj_count = 0;
     int HEADER_SIZE = 8;
-    size_t byte_count = 0; //changed to size_t since we are usiung memory sizes
+    size_t byte_count = 0; //changed to size_t since we are using memory sizes
     header *current = (header *)heap.bytes;
     while((char*) current < heap.bytes + MEMLENGTH ){
         if(current->isAllocated == 1){
             obj_count ++;
-            byte_count += current->size;
+            byte_count += current->size + HEADER_SIZE;
         }
         current = (header *)((char *)current + HEADER_SIZE + current->size);
     }
     if (obj_count>0){
-         //not sure is write can be used like that? maybe use fprintf
+         //only counting memory in payloads
         fprintf(stderr, "mymalloc: %zu bytes leaked in %d objects.\n", byte_count, obj_count);
     }
 }
@@ -67,7 +67,7 @@ void init(){
 void * mymalloc (size_t size, char *file, int line){
    //REMOVED MIN_MEM_SIZE
 
-    int HEADER_SIZE = 8;
+    size_t HEADER_SIZE = 8;
     size_t requested_size = size; //we'll use this to display the original requested size before it being rounded. helps with processing invalid sizes
 
     //initialize the heap the first time malloc/free is used
@@ -117,7 +117,7 @@ void * mymalloc (size_t size, char *file, int line){
 /*
 * marks chunk free or not afterwards
 * automatically coalesces adjacent free chunks
-* @memory: pointer to start of payload of memory that's already allocated
+* @ptr: pointer to start of payload of memory that's already allocated
 * 
 */
 void myfree (void *ptr, char *file, int line){
@@ -129,7 +129,7 @@ void myfree (void *ptr, char *file, int line){
 
    //Check for null pointer
     if(ptr == NULL){
-        fprintf(stderr, "free: Null pointer (%s:%d)", file, line);//fprintf
+        fprintf(stderr, "free: Null pointer (%s:%d)\n", file, line);//fprintf
         exit(2);
     } 
     //make sure ptr points somehwere in the heap
@@ -138,7 +138,7 @@ void myfree (void *ptr, char *file, int line){
     to iterate byte by byte
     */
     if((char*) ptr < heap.bytes || (char *)ptr >= heap.bytes + MEMLENGTH){ // ||middle of payload
-        fprintf(stderr, "free: Inappropriate pointer (%s:%d)", file, line);
+        fprintf(stderr, "free: Inappropriate pointer (%s:%d)\n", file, line);
         exit(2);
     }
    
@@ -160,13 +160,13 @@ void myfree (void *ptr, char *file, int line){
 
         //if we reach the end of heap, ptr was inside the heap but had no payload, thereofre not a valid ptr
         if((char *)current >=heap.bytes + MEMLENGTH){
-            fprintf(stderr, "free: Inappropriate pointer (%s:%d)", file, line);
+            fprintf(stderr, "free: Inappropriate pointer (%s:%d)\n", file, line);
             exit(2);
         }
     }
     //asks to be freed, but is the chunk was already freed
     if(current -> isAllocated == 0){ //already free
-        fprintf(stderr, "free: Double free (%s:%d)", file, line);
+        fprintf(stderr, "free: Double free (%s:%d)\n", file, line);
         exit(2);
     }
 
@@ -186,5 +186,5 @@ void myfree (void *ptr, char *file, int line){
     if(previous != NULL && previous->isAllocated==0){
         previous->size += HEADER_SIZE+current->size;
     }
-
+    return;
 }
