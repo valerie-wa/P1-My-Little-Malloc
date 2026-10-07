@@ -9,6 +9,7 @@
 
 #include "mymalloc.h"
 #include <stdio.h>
+#include <stdint.h>
 
 #define MEMLENGTH 4096
 static union {
@@ -17,10 +18,10 @@ static union {
 } heap;
 static int heap_initialized = 0;
 
-//rn the header is 16 bytes
+//rn the header is 8 bytes and the payload can be a min of 8 bytes, making a min 16 byte chunk 
 typedef struct {
-    size_t size;
-    int isAllocated;
+    uint32_t size;
+    uint32_t isAllocated;
 } header;
 
 void leak_detection(){
@@ -28,7 +29,7 @@ void leak_detection(){
     //if anything still allocated print error msg
     int obj_count = 0;
     int HEADER_SIZE = 8;
-    int byte_count = 0;
+    size_t byte_count = 0; //changed to size_t since we are usiung memory sizes
     header *current = (header *)heap.bytes;
     while((char*) current < heap.bytes + MEMLENGTH ){
         if(current->isAllocated == 1){
@@ -37,9 +38,10 @@ void leak_detection(){
         }
         current = (header *)((char *)current + HEADER_SIZE + current->size);
     }
-    //not sure is write can be used like that? maybe use fprintf
-    fprintf(stderr, "mymalloc: %d bytes leaked in %d objects.\n", byte_count, obj_count);
-    return; 
+    if (obj_count>0){
+         //not sure is write can be used like that? maybe use fprintf
+        fprintf(stderr, "mymalloc: %zu bytes leaked in %d objects.\n", byte_count, obj_count);
+    }
 }
 
 /*
@@ -53,7 +55,7 @@ void init(){
     heap_initialized = 1;
     first_header->size = ((MEMLENGTH - sizeof(header)) + 7) & ~7;
     //register leak detection function to be called at exit
-    atexit(leak_detection()); //doesnt this need to be called after running leak_detection
+    atexit(leak_detection); //doesnt this need to be called after running leak_detection
 }
 
 /*
@@ -62,10 +64,10 @@ void init(){
 * @size: number of bytes to allocate
 * returns a pointer to the payload of memory (not the header)
 */
-void * mymalloc (size_t size, char *file, int line){\
-    int MIN_MEM_SIZE = 16; 
+void * mymalloc (size_t size, char *file, int line){
+   //REMOVED MIN_MEM_SIZE
     int HEADER_SIZE = 8;
-    int STD_ERR = 2;
+    size_t requested_size = size; //we'll use this to display the original requested size before it being rounded. helps with processing invalid sizes
 
     if(!heap_initialized){
         init();
@@ -75,28 +77,29 @@ void * mymalloc (size_t size, char *file, int line){\
 
     //if cannot satisfy request
     if(size == 0 || size > MEMLENGTH - HEADER_SIZE){
-        fprintf(stderr, "malloc:Unable to allocate %zu bytes (%s:%d)\n", size, file, line);
+        fprintf(stderr, "malloc:Unable to allocate %zu bytes (%s:%d)\n", requested_size, file, line);
         return NULL;
     }
 
     header *current = (header *) heap.bytes;
     while((char *)current < heap.bytes + MEMLENGTH){ 
         if(current->isAllocated == 0 && current->size >= size){
-            if(current->size - HEADER_SIZE - size >= MIN_MEM_SIZE){
+            if(current->size >= size + HEADER_SIZE + 8){ //+8 since the min payload should be 16 bytes? 
                 //split chunk
                 header *next_header = (header *)((char *)current + HEADER_SIZE + size);
                 next_header->size = current->size - HEADER_SIZE - size;
                 next_header->isAllocated = 0;
+                current->size = size; // moved this here so we can shrink size when we actually split
             }
             current->isAllocated = 1;
-            current->size = size;
+            
             return (char *)current + HEADER_SIZE; //pointer to payload
         }
         current = (header *)((char *)current + HEADER_SIZE + current->size);
     }
 
     //no chunk found after going through all checks
-    fprintf(stderr,"malloc:Unable to allocate %d bytes (%s:%d)\n", size, file, line);
+    fprintf(stderr,"malloc:Unable to allocate %zu bytes (%s:%d)\n", size, file, line);
     return NULL;
 }
 
