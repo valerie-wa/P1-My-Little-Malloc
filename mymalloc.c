@@ -9,6 +9,7 @@
 
 #include "mymalloc.h"
 #include <stdio.h>
+#include <stdint.h>
 
 #define MEMLENGTH 4096
 static union {
@@ -17,10 +18,10 @@ static union {
 } heap;
 static int heap_initialized = 0;
 
-//rn the header is 16 bytes
+//rn the header is 8 bytes and the payload can be a min of 8 bytes, making a min 16 byte chunk 
 typedef struct {
-    size_t size;
-    int isAllocated;
+    uint32_t size;
+    uint32_t isAllocated;
 } header;
 
 void leak_detection(){
@@ -28,18 +29,19 @@ void leak_detection(){
     //if anything still allocated print error msg
     int obj_count = 0;
     int HEADER_SIZE = 8;
-    int byte_count = 0;
-    header *current = (header *) heap.bytes;
+    size_t byte_count = 0; //changed to size_t since we are using memory sizes
+    header *current = (header *)heap.bytes;
     while((char*) current < heap.bytes + MEMLENGTH ){
         if(current->isAllocated == 1){
             obj_count ++;
-            byte_count += current->size;
+            byte_count += current->size + HEADER_SIZE;
         }
         current = (header *)((char *)current + HEADER_SIZE + current->size);
     }
-    //not sure is write can be used like that? maybe use fprintf
-    fprintf(stderr, "mymalloc: %d bytes leaked in %d objects.\n", byte_count, obj_count);
-    return; 
+    if (obj_count>0){
+         //only counting memory in payloads
+        fprintf(stderr, "mymalloc: %zu bytes leaked in %d objects.\n", byte_count, obj_count);
+    }
 }
 
 /*
@@ -63,34 +65,47 @@ void init(){
 * returns a pointer to the payload of memory (not the header)
 */
 void * mymalloc (size_t size, char *file, int line){
-    int MIN_MEM_SIZE = 16; 
-    int HEADER_SIZE = 8;
+   //REMOVED MIN_MEM_SIZE
 
+    int HEADER_SIZE = 8;
+    size_t requested_size = size; //we'll use this to display the original requested size before it being rounded. helps with processing invalid sizes
+
+    //initialize the heap the first time malloc/free is used
     if(!heap_initialized){
         init();
     }
+    
+    // round up to nearest multiple of 8 for allignment 
+    size = (size + 7) & ~7; 
 
-    size = (size + 7) & ~7; // round up to nearest multiple of 8
-
-    //if cannot satisfy request
-    if(size == 0 || size > MEMLENGTH - HEADER_SIZE){//
-        fprintf(stderr, "Out of bounds of heap.");
+    //if cannot satisfy request, send error
+    if(size == 0 || size > MEMLENGTH - HEADER_SIZE){
+        fprintf(stderr, "malloc:Unable to allocate %zu bytes (%s:%d)\n", requested_size, file, line);
         return NULL;
     }
 
+    //start searching for free memeory at the first chunk of heap
     header *current = (header *) heap.bytes;
-    while((char *)current < MEMLENGTH){ 
+
+    //walk through each chunk in theheap. 
+    //current always points to the header of the chunk
+    while((char *)current < heap.bytes + MEMLENGTH){ 
+        //check if chunk is currently free and has enought payload space for request
+
         if(current->isAllocated == 0 && current->size >= size){
-            if(current->size - HEADER_SIZE - size >= MIN_MEM_SIZE){
+            //determine whether the chunk should be split, otherwise allocate entire current chunk
+            if(current->size >= size + HEADER_SIZE + 8){ //+8 since the min payload should be 16 bytes? 
                 //split chunk
                 header *next_header = (header *)((char *)current + HEADER_SIZE + size);
                 next_header->size = current->size - HEADER_SIZE - size;
                 next_header->isAllocated = 0;
+                current->size = size; // moved this here so we can shrink size when we actually split
             }
             current->isAllocated = 1;
-            current->size = size;
+            
             return (char *)current + HEADER_SIZE; //pointer to payload
         }
+        //chunk could not satisfy request, move to next chunk
         current = (header *)((char *)current + HEADER_SIZE + current->size);
     }
 
@@ -102,7 +117,7 @@ void * mymalloc (size_t size, char *file, int line){
 /*
 * marks chunk free or not afterwards
 * automatically coalesces adjacent free chunks
-* @memory: pointer to start of payload of memory that's already allocated
+* @ptr: pointer to start of payload of memory that's already allocated
 * 
 */
 void myfree (void *ptr, char *file, int line){
@@ -112,59 +127,64 @@ void myfree (void *ptr, char *file, int line){
         init();
     }
 
-    //if inappropriate calls to free()
-    //3. middle of payload/head/not pointing to payload 4. not allocated 
-    //ptr null
+   //Check for null pointer
     if(ptr == NULL){
-        fprintf(stderr, "free: Null pointer (%s:%d)", file, line);//fprintf
+        fprintf(stderr, "free: Null pointer (%s:%d)\n", file, line);//fprintf
         exit(2);
     } 
-    //ptr before/after heap?
+    //make sure ptr points somehwere in the heap
     /*
     Change from (void *) heap.bytes to (char *)ptr < heap.bytes since it would be easier
     to iterate byte by byte
     */
-    if(ptr < (void *) heap.bytes || ptr >= (void *) (heap.bytes + MEMLENGTH)){ // ||middle of payload
-        fprintf(stderr, "free: Inappropriate pointer (%s:%d)", file, line);
+    if((char*) ptr < heap.bytes || (char *)ptr >= heap.bytes + MEMLENGTH){ // ||middle of payload
+        fprintf(stderr, "free: Inappropriate pointer (%s:%d)\n", file, line);
         exit(2);
     }
    
+    //Start the first chunk
+    //current points to the chunk currently being examined
+    //prev remembers the chunk immedietly before current so we can coalesce
     header *current = (header *)heap.bytes;
-    header* previous = current;
-    previous->size = 0;
+    header* previous = NULL; //let's keep this null as it avoid corrupting the heap since the size of prev would be 0 if set to current
 
-    //iterate through each chunk until we find a ptr value that has a payload to free
+    //iterate through each chunk until we find the chunk that contains ptr. 
+    //Have to start the beginning of the heap each pass 
     while((char *)current < heap.bytes + MEMLENGTH){
         void *payload = (char *)current + HEADER_SIZE;
         if (payload == ptr){
             break; //payload found
         }
-        previous = current;
+        previous = current;//save current chunk before moving to the next one
         current = (header *)((char *) current + HEADER_SIZE + current->size);
+
+        //if we reach the end of heap, ptr was inside the heap but had no payload, thereofre not a valid ptr
+        if((char *)current >=heap.bytes + MEMLENGTH){
+            fprintf(stderr, "free: Inappropriate pointer (%s:%d)\n", file, line);
+            exit(2);
+        }
     }
+    //asks to be freed, but is the chunk was already freed
     if(current -> isAllocated == 0){ //already free
-        fprintf(stderr, "free: Double free (%s:%d)", file, line);
+        fprintf(stderr, "free: Double free (%s:%d)\n", file, line);
         exit(2);
     }
 
-    //coalesce free chunks
-    header* next_head = (header *) ((char*)current + current->size + HEADER_SIZE);
-    if((char *)next_head < heap.bytes + MEMLENGTH && next_head->isAllocated == 0){
-        current->size += (next_head -> size + HEADER_SIZE);
-        next_head ->isAllocated = 0;
-        next_head = NULL;
-        //i do feel like this leaves dangling pointers
-        //does prev_size need to updated??
-    }
-    next_head = NULL;
-    if((char*)current != heap.bytes){
-        previous->size += current->size + HEADER_SIZE;
-        current->isAllocated = 0;
-        current = NULL;
+    //freeing the chunk
+    current->isAllocated = 0;
+
+     //find the chunk immedietly after current and we move past the current chunk's header and payload
+    header *next = (header *)((char *)current + HEADER_SIZE + current->size); 
+
+   //if the chunk exists and is also free,combine it 
+    if((char *)next <heap.bytes + MEMLENGTH && next->isAllocated==0){
+        current->size += HEADER_SIZE + next->size;
     }
 
-    // freeing. do we need to change/0 anything in it like no??
-    current->isAllocated = 0;
-    current = NULL;
+    //merge with prev chunk is possible
+
+    if(previous != NULL && previous->isAllocated==0){
+        previous->size += HEADER_SIZE+current->size;
+    }
     return;
 }
