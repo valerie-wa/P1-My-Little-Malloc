@@ -67,7 +67,7 @@ void init(){
 void * mymalloc (size_t size, char *file, int line){
    //REMOVED MIN_MEM_SIZE
 
-    int HEADER_SIZE = 8;
+    size_t HEADER_SIZE = 8;
     size_t requested_size = size; //we'll use this to display the original requested size before it being rounded. helps with processing invalid sizes
 
     //initialize the heap the first time malloc/free is used
