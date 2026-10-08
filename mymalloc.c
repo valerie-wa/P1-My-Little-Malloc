@@ -41,6 +41,7 @@ void leak_detection(){
     if (obj_count>0){
          //only counting memory in payloads
         fprintf(stderr, "mymalloc: %zu bytes leaked in %d objects.\n", byte_count, obj_count);
+        exit(2);
     }
 }
 
@@ -81,7 +82,7 @@ void * mymalloc (size_t size, char *file, int line){
     //if cannot satisfy request, send error
     if(size == 0 || size > MEMLENGTH - HEADER_SIZE){
         fprintf(stderr, "malloc:Unable to allocate %zu bytes (%s:%d)\n", requested_size, file, line);
-        return NULL;
+        exit(2);
     }
 
     //start searching for free memeory at the first chunk of heap
@@ -111,7 +112,7 @@ void * mymalloc (size_t size, char *file, int line){
 
     //no chunk found after going through all checks
     fprintf(stderr,"malloc:Unable to allocate %zu bytes (%s:%d)\n", size, file, line);
-    return NULL;
+    exit(2);
 }
 
 /*

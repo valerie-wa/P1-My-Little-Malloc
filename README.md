@@ -21,6 +21,7 @@ MemTest Testing Plan
 8. malloc everything, then malloc smth again
 9. free null pointer
 10. free pointer pointing to middle of empty memory
+11. freeing with address not from malloc
 
 MyMalloc Design
 - uses a 4096-byte heap divided into chunks

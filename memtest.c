@@ -93,15 +93,16 @@ main (int argc, char **argv)
 	printf("(4) Should return inappropriate pointer error\n");
 
 	//5 free chunk that's already free
+	char *one_block2 = one_block;
 	free(one_block);
-	free(one_block);
+	free(one_block2);
 	printf("(5) Should return double free error\n");
 	
-	//6 allocating 0 and 
+	//6 allocating 0 and full heap
 	//nothing allocated right ow
 	int *zero_bytes = malloc(0);
 	int *full_heap = malloc(4089); //4088 (4096-8) is limit 
-	printf("(6) Should return unable to allocate error twice.\n");
+	printf("(6) Should return unable to allocate error twice for 0 and 4096.\n");
 
 	//7 testing if malloc can split free chunks when allocating
 	char* arr2[7];
@@ -129,6 +130,11 @@ main (int argc, char **argv)
 	free(arr2[1]);
 	free(arr2[1] + 8);
 	printf("(10) Should throw inappropriate pointer. \n");
+
+	//11 Freeing wiht address not from malloc
+	int x;
+	free(&x);
+	printf("(11) Should throw inappropriate pointer error.\n");
 		
 	
 	//freeing everything
